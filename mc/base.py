@@ -117,7 +117,7 @@ class MCMC:
 
     def plot_intermediates(self, walker_idx=0, n_plots=5, same_plot=True, x=None, y=None):
         """
-        Visualizes the learned property at `n_plots` points in the sample trajectory
+        Visualize the learned property at `n_plots` points in the sample trajectory
         Params:
             learner_idx (int): Index of random walker in ensemble to use for plotting
             n_plots (int): Number of timesteps at which to generate plots
@@ -146,8 +146,34 @@ class MCMC:
             plt.title(self.title)
             plt.legend(bbox_to_anchor=(1,1));
 
+    def get_rmse(self, walker_idx, x, y):
+        """
+        Compute the RMSE between the reconstructed quantity and observed `x` and `y`
+        """
+        omega = np.mean(self.latest_sample[-10:, walker_idx, :], axis=0)
+        predictions = self.model.gen_prediction(omega, x)
+        rmse = np.sqrt(np.mean((y - predictions)**2))
+        return rmse
+
+    def get_best_walker(self, x, y):
+        """
+        Return the index of the walker in the ensemble with lowest RMSE on the observed `x` and `y`
+        """
+        assert self.latest_sample is not None, "Must run random walk before evaluating results"
+        n_walkers = self.latest_sample.shape[1]
+        best_rmse, best_idx = np.inf, None
+        for walker_idx in range(n_walkers):
+            walker_rmse = self.get_rmse(walker_idx, x, y)
+            if walker_rmse < best_rmse:
+                best_rmse = walker_rmse
+                best_idx = walker_idx
+        return best_idx
+
 
 class MultiModelMCMC(MCMC):
+    """
+    Child class to handle MCMC based on multiple sources of experimental data (eg phonon DOS and Cv curves)
+    """
     def check_model(self):
         assert self.model.is_multimodel, "Single-model learning must be simulated using MCMC object"
 
@@ -195,7 +221,7 @@ class MultiModelMCMC(MCMC):
                     elif true_data_format[dataset] == "line":
                         ax[i].plot(true_data[dataset]["x"], true_data[dataset]["y"], c="k", label="Observed Data")
         
-        plt.title(self.title)
+        plt.suptitle(self.title)
         plt.legend(bbox_to_anchor=(1,1));
 
     def get_rmse(self, walker_idx, true_data):
