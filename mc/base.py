@@ -138,7 +138,7 @@ class MCMC:
             inf_data = az.convert_to_inference_data({param:self.latest_sample[:, :, i] for i, param in enumerate(self.parameters)})
             az.plot_pair(inf_data, 
                         kind="kde", 
-                        scatter_kwargs={"s":50}, 
+                        scatter_kwargs={"s":40}, 
                         marginals=True, 
                         point_estimate="median", 
                         var_names=[fr"[^{self.self_interaction}]"], 
