@@ -1,4 +1,5 @@
 import emcee
+import arviz as az
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -126,7 +127,7 @@ class MCMC:
         """
         Plot the sampling distribution over all parameters in the most recent MCMC run
         """
-        if "a" in kind:
+        if "a" not in kind:
             # Seaborn plotting
             flattened_samples = self.latest_sample[burn_in:, :, :].reshape(-1, self.n_parameters)
             results_df = pd.DataFrame(flattened_samples, columns=self.parameters)
@@ -135,7 +136,7 @@ class MCMC:
                 sns.pairplot(results_df, kind="kde", diag_kind="kde", corner=True);
         else:
             # Arviz plotting
-            inf_data = az.convert_to_inference_data({param:self.latest_sample[:, :, i] for i, param in enumerate(self.parameters)})
+            inf_data = az.convert_to_inference_data({param:self.latest_sample[burn_in:, :, i] for i, param in enumerate(self.parameters)})
             az.plot_pair(inf_data, 
                         kind="kde", 
                         scatter_kwargs={"s":40}, 
