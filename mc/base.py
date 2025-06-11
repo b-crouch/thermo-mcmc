@@ -16,7 +16,14 @@ class MCMC:
         self.model = model
         self.check_model()
         self.prior = prior
-        self.parameters = list(prior.keys())
+        self.parameters = [str(param) for param in self.model.hessian_parameters]
+        self.self_interaction = self.parameters[-1]
+
+        # Store the non-Hessian parameters of the model
+        for param in self.prior:
+            if param not in self.parameters:
+                self.parameters.append(param)
+
         self.n_parameters = len(self.parameters)
         self.latest_sample = None
         self.x_label = x_prop
@@ -91,28 +98,52 @@ class MCMC:
         return pd.DataFrame({param:[omega_true[param], mcmc_estimate[param][0], mcmc_estimate[param][1]] 
                       for param in self.parameters[:-1]}, index=["True", "MCMC Estimate", "MCMC SD"]).T
 
-    def plot_trajectories(self):
+    def plot_trajectories(self, plot_conf=False):
         """
         Plot the sampling trajectory of each random walker in the most recent MCMC run
         """
-        fig, ax = plt.subplots(1, self.n_parameters, figsize=(16, 3))
+        fig, ax = plt.subplots(1, self.n_parameters-1, figsize=(16, 3))
         plt.subplots_adjust(wspace=0.6)
 
-        for i, param in enumerate(self.prior):
-            for j in range(self.latest_sample.shape[1]):
-                ax[i].plot(self.latest_sample[:, j, i], alpha=0.5)
-            ax[i].set_xlabel("MCMC Iteration")
-            ax[i].set_ylabel(param);
-        plt.suptitle(self.title)
+        self_interaction_is_skipped = False
+        for i, param in enumerate(self.parameters):
+            if param != self.self_interaction:
+                if not plot_conf:
+                    for j in range(self.latest_sample.shape[1]):
+                        ax[i - int(self_interaction_is_skipped)].plot(self.latest_sample[:, j, i - int(self_interaction_is_skipped)], alpha=0.5)
+                else:
+                    param_data = pd.DataFrame(self.latest_sample[:, :, i].T, columns=range(self.latest_sample.shape[0])).melt().rename(columns={"variable":"iteration"})
+                    sns.lineplot(data=param_data, x="iteration", y="value", ax=ax[i - int(self_interaction_is_skipped)]);
+                ax[i - int(self_interaction_is_skipped)].set_xlabel("MCMC Iteration", fontsize=14)
+                ax[i - int(self_interaction_is_skipped)].set_ylabel(param, fontsize=18);
+            else:
+                self_interaction_is_skipped = True
+                continue
+        plt.suptitle(self.title, fontsize=15)
         return fig, ax
     
-    def plot_distribution(self, burn_in=0):
+    def plot_distribution(self, burn_in=0, kind="arviz"):
         """
         Plot the sampling distribution over all parameters in the most recent MCMC run
         """
-        flattened_samples = self.latest_sample[burn_in:, :, :].reshape(-1, self.n_parameters)
-        results_df = pd.DataFrame(flattened_samples, columns=self.parameters)
-        sns.pairplot(results_df, diag_kind="kde", corner=True, plot_kws={"s":8, "alpha":0.4});
+        if "a" in kind:
+            # Seaborn plotting
+            flattened_samples = self.latest_sample[burn_in:, :, :].reshape(-1, self.n_parameters)
+            results_df = pd.DataFrame(flattened_samples, columns=self.parameters)
+            results_df = results_df.drop(columns=self.self_interaction)
+            with sns.plotting_context(rc={"axes.labelsize":20}):
+                sns.pairplot(results_df, kind="kde", diag_kind="kde", corner=True);
+        else:
+            # Arviz plotting
+            inf_data = az.convert_to_inference_data({param:self.latest_sample[:, :, i] for i, param in enumerate(self.parameters)})
+            az.plot_pair(inf_data, 
+                        kind="kde", 
+                        scatter_kwargs={"s":50}, 
+                        marginals=True, 
+                        point_estimate="median", 
+                        var_names=[fr"[^{self.self_interaction}]"], 
+                        filter_vars="regex",
+                        textsize=40);
         plt.suptitle(self.title)
 
     def plot_intermediates(self, walker_idx=0, n_plots=5, same_plot=True, x=None, y=None):

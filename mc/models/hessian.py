@@ -31,7 +31,7 @@ class DOSModel(LogLikelihoodModel):
         self.step = step
         self.is_multimodel = False
 
-    def gen_quantity(self, omega):
+    def gen_quantity(self, omega, mesh=16):
         """
         Generate DOS for parameter set `omega`
         """
@@ -42,7 +42,7 @@ class DOSModel(LogLikelihoodModel):
         # Compute phonons
         self.calculator.force_constants = reconstructed_hessian.reshape(self.n_atoms, 3, self.n_atoms, 3).transpose(0, 2, 3, 1)
         self.calculator.save()
-        self.calculator.run_mesh([32, 32, 32])
+        self.calculator.run_mesh([mesh, mesh, mesh])
         self.calculator.run_total_dos(freq_min=self.interval[0], freq_max=self.interval[1], sigma=self.smear, freq_pitch=self.step)
         frequencies, dos = self.calculator.get_total_DOS()
         return frequencies, dos
@@ -116,7 +116,7 @@ class PhononModel(LogLikelihoodModel):
         self.cv_scale_factor = cv_scale_factor if cv_scale_factor is not None else cv_conversion_factor
         self.is_multimodel = True
 
-    def gen_quantity(self, omega):
+    def gen_quantity(self, omega, mesh=16):
         # Populate the Hessian
         parameter_map = {self.hessian_parameters[i]:omega[i] for i in range(self.n_parameters)}
         reconstructed_hessian, _ = self.H.reconstruct_hessian(symbol_mapping=parameter_map)
@@ -124,7 +124,7 @@ class PhononModel(LogLikelihoodModel):
         # Compute phonons
         self.calculator.force_constants = reconstructed_hessian.reshape(self.n_atoms, 3, self.n_atoms, 3).transpose(0, 2, 3, 1)
         self.calculator.save()
-        self.calculator.run_mesh([32, 32, 32])
+        self.calculator.run_mesh([mesh, mesh, mesh])
         
         self.calculator.run_total_dos(freq_min=self.freq_interval[0], freq_max=self.freq_interval[1], sigma=self.smear, freq_pitch=self.freq_step)
         frequencies, dos = self.calculator.get_total_DOS()
@@ -151,12 +151,12 @@ class PhononModel(LogLikelihoodModel):
         return predictions
 
     def gen_log_likelihood(self, omega, cv_data, dos_data):
-        sigma = omega[-1]
-        hessian_params = omega[:-1]
+        sigma_cv, sigma_dos = omega[-2], omega[-1]
+        hessian_params = omega[:-2]
         predictions = self.gen_prediction(hessian_params, cv_data["x"], dos_data["x"])
 
 
-        log_lik = np.sum(-0.5*np.log(2*np.pi*sigma**2) - 0.5*((cv_data["y"]-predictions["cv"])/sigma)**2) + np.sum(-0.5*((dos_data["y"]-predictions["dos"])/sigma)**2)
+        log_lik = np.sum(-0.5*np.log(2*np.pi*sigma_cv**2) - 0.5*((cv_data["y"]-predictions["cv"])/sigma_cv)**2) + np.sum(-0.5*np.log(2*np.pi*sigma_dos**2) - 0.5*((dos_data["y"]-predictions["dos"])/sigma_dos)**2)
         return log_lik
     
     def plot(self, omega, ax=None, label="", xlim=None, c="tab:blue"):
